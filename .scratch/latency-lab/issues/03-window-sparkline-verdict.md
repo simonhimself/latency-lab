@@ -11,3 +11,8 @@
 - [ ] The Verdict displays excellent/good/rough and changes color accordingly
 - [ ] The verdict thresholds are visible somewhere on the page so ratings are explainable
 - [ ] No dependencies and no build step were introduced
+
+## Comments
+
+- 2026-08-25: Implemented by subagent; two-axis review returned zero critical/major across both axes, mirror math verified line-by-line faithful to src/measurement/index.ts.
+- 2026-08-25: Known tradeoff accepted: y-range autoscales to absolute window min/max per redraw, so a single outlier spike rescales the chart momentarily. A decayed-max would be steadier if this ever annoys anyone.
