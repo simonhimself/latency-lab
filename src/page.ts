@@ -136,6 +136,18 @@ export const PAGE_HTML = `<!doctype html>
   var socket = null;
   var attempt = 0;
   var sampleTimer = null;
+  // Handle for a scheduled reconnect attempt. At most one may be pending at
+  // any time: rapid close/open/close cycles must never stack multiple
+  // setTimeout(connect) calls or orphaned sockets would race each other and
+  // push duplicate samples into the Window.
+  var reconnectTimer = null;
+
+  function cancelPendingReconnect() {
+    if (reconnectTimer !== null) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+  }
 
   function setPill(state) {
     pillEl.textContent = state;
@@ -149,8 +161,12 @@ export const PAGE_HTML = `<!doctype html>
     }
   }
 
-  // Sends only while the page is visible; the interval keeps running across
-  // tab hides so sampling resumes immediately on return without re-wiring.
+  // Hidden-tab pause (ticket 04): sends only while visible; the interval keeps
+  // running across tab hides so sampling resumes immediately on return without
+  // re-wiring. While hidden no pings are sent, so no echoes arrive and draw()
+  // is never called: neither the Window nor the canvas accumulates or redraws
+  // anything. The Window itself is untouched while paused, so resumed samples
+  // append to the same history rather than resetting it.
   function sample() {
     if (document.visibilityState !== 'visible') return;
     if (socket === null || socket.readyState !== socket.OPEN) return;
@@ -295,21 +311,57 @@ export const PAGE_HTML = `<!doctype html>
     var delayMs = Math.min(500 * Math.pow(2, attempt), 5000);
     attempt += 1;
     setPill('reconnecting');
-    setTimeout(connect, delayMs);
+    // Clear-before-schedule: even if a stale close event slipped through the
+    // socket-identity guards below, only one reconnect may ever be pending.
+    cancelPendingReconnect();
+    reconnectTimer = setTimeout(function () {
+      reconnectTimer = null;
+      connect();
+    }, delayMs);
   }
 
   function connect() {
-    setPill('connecting');
-    socket = new WebSocket(wsUrl);
+    // A previous cycle must not leak a second pending timer into this one.
+    cancelPendingReconnect();
+    // Make the single-interval invariant local to connect() rather than
+    // emergent: even if a future caller invokes connect() while live,
+    // the old sampling interval dies here.
+    stopSampling();
 
-    socket.onopen = function () {
+    // Retire any surviving predecessor before replacing it: detach its
+    // handlers (its late close/open events must not touch fresh state) and
+    // ask it to close so no orphaned sockets accumulate.
+    if (socket !== null) {
+      socket.onopen = null;
+      socket.onmessage = null;
+      socket.onerror = null;
+      socket.onclose = null;
+      if (socket.readyState === WebSocket.CONNECTING ||
+          socket.readyState === WebSocket.OPEN) {
+        socket.close();
+      }
+    }
+
+    setPill('connecting');
+    var ws = new WebSocket(wsUrl);
+    socket = ws;
+
+    ws.onopen = function () {
+      // Identity guard: a late event from a replaced socket is stale and
+      // must not reset backoff, flip the pill, or start sampling.
+      if (socket !== ws) return;
       attempt = 0;
       setPill('live');
       stopSampling();
+      // Persistent interval: sample() self-gates on document.visibilityState,
+      // so hidden tabs send nothing and the interval keeps ticking for an
+      // immediate resume on return. Samples always append to the same Window,
+      // which is never cleared on disconnect, so recovery continues the
+      // existing history gap-free.
       sampleTimer = setInterval(sample, 100);
     };
 
-    socket.onmessage = function (event) {
+    ws.onmessage = function (event) {
       var msg;
       try {
         msg = JSON.parse(event.data);
@@ -329,11 +381,15 @@ export const PAGE_HTML = `<!doctype html>
       }
     };
 
-    // rtt/colo/readouts/graph are deliberately left frozen at last-known
-    // values here; no new samples arrive while sampling is stopped, and draw()
-    // only runs per sample or on resize, so the canvas never gets blanked.
-    socket.onerror = function () {};
-    socket.onclose = function () {
+    // Frozen-history contract (ticket 04): on loss, nothing wipes state.
+    // Sampling stops, draw() never runs again (it fires only per echo or on
+    // resize), and readouts keep their last computed values from the frozen
+    // Window, so verdict/readouts stay valid instead of erroring.
+    ws.onerror = function () {};
+    ws.onclose = function () {
+      // Same identity guard as onopen: only the current socket may schedule
+      // reconnection; a replaced socket's close is noise.
+      if (socket !== ws) return;
       reconnectWithBackoff();
     };
   }

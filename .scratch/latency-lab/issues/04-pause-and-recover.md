@@ -11,3 +11,8 @@
 - [ ] Backoff delays between attempts follow nextBackoffMs up to the 5-second cap
 - [ ] While disconnected, the graph and readouts freeze instead of resetting
 - [ ] Restoring connectivity returns the pill to live and sampling resumes without manual reload
+
+## Comments
+
+- 2026-08-25: Implemented by subagent. Honest finding: most resilience behavior already existed from tickets 01-03; the real gaps closed were an overlapping-reconnect timer guard and stale-socket handler identity checks (race conditions, not features).
+- 2026-08-25: Review returned zero critical/major; one minor applied (stopSampling() hoisted into connect() so the single-interval invariant is local, not emergent). Reviewer nit recorded: background tab throttling may stretch nominal backoff delays while hidden; correct behavior, documented here rather than in code.
