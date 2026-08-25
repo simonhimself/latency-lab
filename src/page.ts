@@ -7,11 +7,39 @@ export const PAGE_HTML = `<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Latency Lab</title>
+<script>
+/* Applied before first paint so OS-dark users never see a light flash.
+   Mirrors effectiveDark() in the main script below. */
+(function () {
+  try {
+    var s = localStorage.getItem('ll-theme');
+    var dark =
+      s === 'dark' ||
+      ((s === null || s === undefined) &&
+        matchMedia('(prefers-color-scheme: dark)').matches);
+    if (dark) document.documentElement.setAttribute('data-theme', 'dark');
+  } catch (e) {}
+})();
+</script>
 <style>
+  /* Two palettes, one set of tokens. Light is the default; the dark block
+     activates off html[data-theme="dark"], which the inline script keeps in
+     sync with either an explicit user choice (persisted) or the OS setting. */
   :root {
+    color-scheme: light;
+    --bg: #f6f8fa;
+    --surface: #ffffff;
+    --border: #d0d7de;
+    --border-strong: #afb8c1;
+    --text: #1f2328;
+    --muted: #656d76;
+    --accent: #0969da;
+    --ok: #1a7f37;
+    --warn: #9a6700;
+    --bad: #cf222e;
+  }
+  html[data-theme="dark"] {
     color-scheme: dark;
-    /* Single dark palette: one background ramp, one text ramp, one accent,
-       three state hues. Every rule below consumes these tokens only. */
     --bg: #0b0e14;
     --surface: #0d1117;
     --border: #21262d;
@@ -34,6 +62,11 @@ export const PAGE_HTML = `<!doctype html>
        advance width, so live-updating values never shift horizontally. */
     font-variant-numeric: tabular-nums;
   }
+  /* Smooth palette swaps without painting the whole document every frame. */
+  body, .pill, .stat, #spark, .theme-btn {
+    transition: background-color 0.18s ease, border-color 0.18s ease,
+                color 0.18s ease;
+  }
   body { display: flex; }
   /* margin:auto centers when the content fits and falls back to a scrolled,
      top-reachable column when the viewport is shorter than the instrument
@@ -42,12 +75,21 @@ export const PAGE_HTML = `<!doctype html>
     margin: auto;
     width: 100%;
     max-width: 640px;
-    padding: 32px 16px;
+    padding: 24px 16px 40px;
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 18px;
     text-align: center;
+  }
+  /* Title left, status pill and theme switch right: the connection state is
+     visible without scrolling and never moves as sections populate. */
+  .top {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
   }
   .title {
     margin: 0;
@@ -57,6 +99,30 @@ export const PAGE_HTML = `<!doctype html>
     text-transform: uppercase;
     color: var(--muted);
   }
+  .controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .theme-btn {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    border: 1px solid var(--border-strong);
+    background: var(--surface);
+    color: var(--muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+  }
+  .theme-btn:hover { color: var(--text); border-color: var(--muted); }
+  /* Each icon shows the mode you would switch TO: moon in light, sun in dark. */
+  .theme-btn .icon-sun  { display: none; }
+  .theme-btn .icon-moon { display: block; }
+  html[data-theme="dark"] .theme-btn .icon-sun  { display: block; }
+  html[data-theme="dark"] .theme-btn .icon-moon { display: none; }
   .pill {
     font-size: 12px;
     letter-spacing: 0.08em;
@@ -86,9 +152,19 @@ export const PAGE_HTML = `<!doctype html>
     letter-spacing: 0.2em;
     color: var(--accent);
   }
+  .rtt-wrap {
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+  }
   #rtt {
     font-size: clamp(56px, 14vw, 104px);
     line-height: 1;
+  }
+  .rtt-wrap .unit {
+    font-size: clamp(18px, 4vw, 28px);
+    color: var(--muted);
+    margin-left: 8px;
   }
   /* Hero element: full column width, fluid height. The drawing code reads
      this box on every resize, so CSS stays the single source of truth. */
@@ -102,22 +178,27 @@ export const PAGE_HTML = `<!doctype html>
   #spark {
     display: block;
     width: 100%;
-    height: clamp(96px, 20vh, 144px);
+    height: clamp(110px, 22vh, 160px);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: 12px;
     background: var(--surface);
   }
   .stats {
     display: flex;
     flex-wrap: wrap;
     justify-content: center;
-    gap: 16px 44px;
+    gap: 12px;
   }
   .stat {
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 4px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 22px;
+    min-width: 108px;
   }
   .stat .value {
     font-size: 24px;
@@ -139,18 +220,29 @@ export const PAGE_HTML = `<!doctype html>
     max-width: 46ch;
   }
 </style>
+<meta name="theme-color" id="metaTheme" content="#f6f8fa">
 </head>
 <body>
   <main>
-    <h1 class="title">latency lab</h1>
-    <span id="pill" class="pill connecting">connecting</span>
+    <header class="top">
+      <h1 class="title">latency lab</h1>
+      <div class="controls">
+        <span id="pill" class="pill connecting">connecting</span>
+        <button id="theme" type="button" class="theme-btn" aria-label="Toggle dark mode" title="Toggle dark mode">
+          <svg class="icon-moon" width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M9.598 1.591a.749.749 0 0 1 .785-.175 7.001 7.001 0 1 1-8.967 8.967.75.75 0 0 1 .961-.96 5.5 5.5 0 0 0 7.046-7.046.75.75 0 0 1 .175-.786Zm1.616 1.945a7 7 0 0 1-7.678 7.678 5.499 5.499 0 1 0 7.678-7.678Z"/></svg>
+          <svg class="icon-sun" width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 12a4 4 0 1 1 0-8 4 4 0 0 1 0 8ZM8 0a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0V.75A.75.75 0 0 1 8 0Zm0 13a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5A.75.75 0 0 1 8 13ZM2.343 2.343a.75.75 0 0 1 1.061 0l1.06 1.061a.75.75 0 1 1-1.06 1.06l-1.06-1.06a.75.75 0 0 1 0-1.06Zm9.193 9.193a.75.75 0 0 1 1.06 0l1.061 1.06a.75.75 0 0 1-1.06 1.061l-1.061-1.06a.75.75 0 0 1 0-1.061ZM16 8a.75.75 0 0 1-.75.75h-1.5a.75.75 0 0 1 0-1.5h1.5A.75.75 0 0 1 16 8ZM3 8a.75.75 0 0 1-.75.75H.75a.75.75 0 0 1 0-1.5h1.5A.75.75 0 0 1 3 8Zm10.657-5.657a.75.75 0 0 1 0 1.06l-1.061 1.061a.75.75 0 1 1-1.06-1.06l1.06-1.061a.75.75 0 0 1 1.061 0ZM4.464 11.536a.75.75 0 0 1 0 1.06l-1.06 1.061a.75.75 0 0 1-1.061-1.06l1.06-1.061a.75.75 0 0 1 1.061 0Z"/></svg>
+        </button>
+      </div>
+    </header>
     <section class="block">
       <div class="label">edge colo</div>
       <div id="colo">&mdash;</div>
     </section>
     <section class="block">
       <div class="label">round trip</div>
-      <div id="rtt">&mdash;</div>
+      <div class="rtt-wrap">
+        <span id="rtt">&mdash;</span><span class="unit">ms</span>
+      </div>
     </section>
     <section class="chart">
       <canvas id="spark"></canvas>
@@ -178,6 +270,18 @@ export const PAGE_HTML = `<!doctype html>
   var verdictEl = document.getElementById('verdict');
   var canvas = document.getElementById('spark');
   var ctx = canvas.getContext('2d');
+  var metaTheme = document.getElementById('metaTheme');
+  var themeBtn = document.getElementById('theme');
+  var darkMq = window.matchMedia('(prefers-color-scheme: dark)');
+
+  // Read a palette token at call time so canvas colors follow the active
+  // theme. CSS custom properties stay the single source of truth for color,
+  // exactly as they already are for layout geometry.
+  function cssVar(name) {
+    return getComputedStyle(document.documentElement)
+      .getPropertyValue(name)
+      .trim();
+  }
 
   // One sample every 100ms while visible -> 300 samples is about 30 seconds.
   // Plot geometry comes from the canvas CSS box (see #spark): resizeCanvas()
@@ -303,8 +407,26 @@ export const PAGE_HTML = `<!doctype html>
 
   function draw() {
     ctx.clearRect(0, 0, plotWidth, plotHeight);
+    var accent = cssVar('--accent');
+    var grid = cssVar('--border');
+
+    // Faint horizontal guides calibrate the eye even before data arrives;
+    // drawn first so the sample path always sits on top of them.
+    var topPad = 8;
+    var bottomPad = 8;
+    var innerH = plotHeight - topPad - bottomPad;
+    ctx.strokeStyle = grid;
+    ctx.lineWidth = 1;
+    for (var g = 1; g <= 3; g++) {
+      var gy = Math.round(topPad + (innerH * g) / 4) + 0.5;
+      ctx.beginPath();
+      ctx.moveTo(0, gy);
+      ctx.lineTo(plotWidth, gy);
+      ctx.stroke();
+    }
+
     var n = samples.length;
-    if (n === 0) return; // empty state: leave the plot blank until data arrives
+    if (n === 0) return; // empty state: guides only until data arrives
 
     var min = samples[0];
     var max = samples[0];
@@ -317,8 +439,6 @@ export const PAGE_HTML = `<!doctype html>
     var pad = Math.max((max - min) * 0.15, 1);
     var yMin = min - pad;
     var yMax = max + pad;
-    var topPad = 8;
-    var bottomPad = 8;
 
     // Newest sample sits at the right edge; the line enters from the right
     // and scrolls left as the window fills toward WINDOW_SIZE.
@@ -338,14 +458,14 @@ export const PAGE_HTML = `<!doctype html>
 
     if (n === 1) {
       // Single sample cannot form a line segment; render it as a dot.
-      ctx.fillStyle = '#79c0ff';
+      ctx.fillStyle = accent;
       ctx.beginPath();
       ctx.arc(xPos(0), yPos(samples[0]), 2, 0, Math.PI * 2);
       ctx.fill();
       return;
     }
 
-    ctx.strokeStyle = '#79c0ff';
+    ctx.strokeStyle = accent;
     ctx.beginPath();
     ctx.moveTo(xPos(0), yPos(samples[0]));
     for (var j = 1; j < n; j++) {
@@ -460,6 +580,44 @@ export const PAGE_HTML = `<!doctype html>
   }
 
   window.addEventListener('resize', resizeCanvas);
+
+  // Theme: an explicit choice (persisted) beats the OS setting; with no
+  // choice made, the page follows the OS live. data-theme drives both the
+  // CSS palette and color-scheme, and metaTheme-color tints mobile chrome.
+  function effectiveDark() {
+    var saved = null;
+    try { saved = localStorage.getItem('ll-theme'); } catch (err) {}
+    if (saved === 'dark') return true;
+    if (saved === 'light') return false;
+    return darkMq.matches;
+  }
+
+  function syncTheme() {
+    var dark = effectiveDark();
+    document.documentElement.setAttribute(
+      'data-theme',
+      dark ? 'dark' : 'light'
+    );
+    metaTheme.setAttribute('content', dark ? '#0b0e14' : '#f6f8fa');
+    draw(); // repaint guides + line in the active palette
+  }
+
+  themeBtn.addEventListener('click', function () {
+    var next = effectiveDark() ? 'light' : 'dark';
+    try { localStorage.setItem('ll-theme', next); } catch (err) {}
+    syncTheme();
+  });
+
+  var onSchemeChange = function () {
+    var saved = null;
+    try { saved = localStorage.getItem('ll-theme'); } catch (err) {}
+    if (saved === null) syncTheme();
+  };
+  if (darkMq.addEventListener) {
+    darkMq.addEventListener('change', onSchemeChange);
+  }
+
+  syncTheme();
   resizeCanvas();
 
   connect();
