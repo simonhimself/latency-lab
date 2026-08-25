@@ -1,63 +1,57 @@
 # Latency Lab
 
-A private, real-time view of your own connection to the Cloudflare edge.
+A tiny web page that shows how fast and stable your internet connection really is, right now.
 
-**Live**: https://latency-lab.simons.workers.dev
+**Try it**: https://latency-lab.simons.workers.dev
 
-Open the page and it immediately starts pinging ten times per second, drawing a scrolling 30-second sparkline of round-trip times alongside p50/p95/jitter readouts and a plain-language verdict (excellent / good / rough). No install, no account, no configuration. Refresh wipes everything.
+Open it and it starts measuring immediately. No sign-up, no install, nothing to configure. Close the tab and everything is forgotten.
 
-## Why this exists
+## What you see
 
-Speed-test sites measure throughput to arbitrary servers and ignore jitter. Ping CLIs give numbers with no memory or context. When a connection feels slow, there was no quick honest instrument that answers: how fast right now, how wobbly, is that normal?
+- **A live graph** of the last 30 seconds of ping times
+- **Round trip (p50)**, the typical time your connection takes to reach a nearby server and back
+- **Worst case (p95)**, where 19 out of 20 pings land faster. Spikes here are what make calls stutter
+- **Jitter**, how much the timing wobbles from one ping to the next. Low jitter means smooth video calls and gaming
+- **A rating** of your connection: excellent, good, or rough
+- **The city** of the data center answering your pings
 
-## How it leverages Cloudflare
+## When would I use this?
 
-**The edge is the instrument, not just the host.** The Worker accepts the WebSocket upgrade directly via `WebSocketPair` and runs in whichever colo is nearest *you*. Every measurement therefore terminates meters away in your own region instead of traveling to some pinned server in Virginia. That choice is the whole product: measure the edge you actually use.
+- Your video calls feel laggy and you want proof before blaming the router
+- You want to compare WiFi against your phone's hotspot. Open the page on both devices
+- You switched on a VPN or changed a setting and want to know what it did to your latency
+- You're just curious how good your connection actually is
 
-**Deliberately no Durable Objects.** The obvious design pins one DO in one location, which quietly falsifies every reading for anyone far away. Latency Lab stays stateless on purpose: the reflector holds nothing, stores nothing, and costs nothing while idle. The reasoning is recorded in the spec under Implementation Decisions.
+## How it works
 
-**Client-owned statistics.** The server is a dumb mirror. Your browser timestamps every ping, computes every percentile locally, and keeps every sample in memory only. Nothing about your network history ever lands on someone else's disk.
+The page sends a small ping to the nearest Cloudflare data center ten times per second and times each reply. Because the target is always the closest one available, the number reflects your real distance to the internet's edge rather than some far-away test server.
 
-**Tiny by discipline.** The entire deployed Worker is ~6 KB gzipped including its inline UI, with zero dependencies and zero build steps. One TypeScript file serves the page; a second pure module holds the measurement mathematics behind the repo's only tested seam.
+All the timing and math happen inside your browser. The server is just an echo that instantly forgets you. Nothing about your network gets stored anywhere.
 
-## What's cool about it
+## Reading the rating
 
-- **Honest geography.** It tells you which colo served you, so readings come with their context attached.
-- **Ephemeral by design.** Fully private, fully forgettable. Close the tab and the evidence is gone.
-- **A verdict you can argue with.** Bands are visible on the page itself (excellent: p50 < 40 ms and jitter < 10 ms; good: < 120 ms / < 30 ms), not hidden methodology.
-- **Device duels.** Open it on WiFi and cellular side by side. No pairing, no accounts, just two tabs.
-- **Resilience without ceremony.** Hide the tab and sampling pauses cleanly; kill your network mid-run and it freezes history, backs off, reconnects through airplane-mode toggles, and resumes into the same window gap-free.
+The page rates your connection using two of the numbers above:
 
-## Built with an agentic spec-driven pipeline
+| Rating | Meaning |
+| --- | --- |
+| Excellent | Typical ping under 40 ms and jitter under 10 ms |
+| Good | Typical ping under 120 ms and jitter under 30 ms |
+| Rough | Anything slower or wobblier than that |
 
-This project was produced end-to-end by [Matt Pocock's agent skills](https://github.com/mattpocock/skills) running in [OpenCode](https://opencode.ai): `/grill-with-docs` interviewed the design (and caught that the Durable Object approach would break the product), `/to-spec` published the spec, `/to-tickets` split it into five tracer-bullet tickets with blocking edges, and subagents implemented each ticket with two-axis code review before every commit. The tickets and spec live under `.scratch/latency-lab/` as the paper trail.
+For context, a healthy home connection usually sits well inside the first row.
 
-## Development
+## Running it yourself
+
+You need Node installed.
 
 ```bash
 npm install
-npm test        # vitest, 24 tests on the measurement-math seam
-npm run dev     # wrangler dev on localhost:8787
-npx tsc --noEmit
+npm run dev     # starts a local copy at http://localhost:8787
+npm test        # runs the tests
 ```
 
-Deploy:
+To put up your own copy on Cloudflare's free tier:
 
 ```bash
 npx wrangler deploy
 ```
-
-## Structure
-
-```
-├── src/
-│   ├── index.ts          # stateless Worker: GET / page, GET /ws echo via WebSocketPair
-│   ├── page.ts           # the entire UI as an inline template string (no build step)
-│   └── measurement/
-│       ├── index.ts      # pure summarize / verdict / nextBackoffMs — the single test seam
-│       └── index.test.ts # nearest-rank percentiles, band boundaries, backoff cap
-├── wrangler.jsonc
-└── .scratch/latency-lab/ # spec + tickets: the pipeline's paper trail
-```
-
-One known duplication, documented deliberately: the client mirrors the stats math inline because the page ships without a build step and cannot import the server module. Both copies carry cross-reference comments; the vitest suite pins the authoritative version.
