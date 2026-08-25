@@ -11,3 +11,8 @@
 - [ ] The colo code served is visible on the page
 - [ ] The server holds no state and stores nothing anywhere
 - [ ] Verified locally via wrangler dev before any deploy
+
+## Comments
+
+- 2026-08-25: Implemented by subagent; verified by orchestrator against local `wrangler dev`: `GET /` returned 200, `/ws` upgrade handshake returned 101 Switching Protocols. Evidence for the "verified locally" criterion.
+- 2026-08-25: Two-axis review found 3 minors, all fixed in the same pass: path-before-method routing with `Allow: GET` on 405s, binary frames now echoed (reflector contract restored), close-race guarded so a frame arriving as the peer closes cannot throw uncaught.

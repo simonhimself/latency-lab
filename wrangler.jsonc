@@ -1,0 +1,6 @@
+{
+  // Worker config. Entry point and name per spec (deployed identity lives in ticket 05).
+  "name": "latency-lab",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-25"
+}

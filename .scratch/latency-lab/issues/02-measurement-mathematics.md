@@ -11,3 +11,8 @@
 - [ ] nextBackoffMs grows exponentially across attempts and never exceeds the 5-second cap
 - [ ] The module contains zero I/O and zero browser APIs
 - [ ] All tests run green via vitest
+
+## Comments
+
+- 2026-08-25: Implemented strictly TDD by subagent: 24 tests green after red phase. Public shape settled as Sample objects ({ rttMs }), not bare numbers, matching spec vocabulary.
+- 2026-08-25: Decision worth remembering: summarize() throws RangeError on an empty Window rather than returning NaNs. The startup UI must not call it before the first Sample exists.
