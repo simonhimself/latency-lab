@@ -8,104 +8,162 @@ export const PAGE_HTML = `<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Latency Lab</title>
 <style>
-  :root { color-scheme: dark; }
+  :root {
+    color-scheme: dark;
+    /* Single dark palette: one background ramp, one text ramp, one accent,
+       three state hues. Every rule below consumes these tokens only. */
+    --bg: #0b0e14;
+    --surface: #0d1117;
+    --border: #21262d;
+    --border-strong: #30363d;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --accent: #79c0ff;
+    --ok: #7ee787;
+    --warn: #e3b341;
+    --bad: #ff7b72;
+  }
+  *, *::before, *::after { box-sizing: border-box; }
   html, body {
     margin: 0;
     height: 100%;
-    background: #0b0e14;
-    color: #e6edf3;
+    background: var(--bg);
+    color: var(--text);
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    /* Inherited everywhere: every digit on the page renders on a fixed
+       advance width, so live-updating values never shift horizontally. */
+    font-variant-numeric: tabular-nums;
   }
-  body {
+  body { display: flex; }
+  /* margin:auto centers when the content fits and falls back to a scrolled,
+     top-reachable column when the viewport is shorter than the instrument
+     (landscape phones), instead of flex-clipping the top off-screen. */
+  main {
+    margin: auto;
+    width: 100%;
+    max-width: 640px;
+    padding: 32px 16px;
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
-    gap: 12px;
-    padding: 16px;
-    box-sizing: border-box;
+    gap: 18px;
+    text-align: center;
+  }
+  .title {
+    margin: 0;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.35em;
+    text-transform: uppercase;
+    color: var(--muted);
   }
   .pill {
-    font-size: 13px;
+    font-size: 12px;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    padding: 4px 12px;
+    padding: 5px 14px;
     border-radius: 999px;
-    border: 1px solid #30363d;
-    color: #9aa7b3;
+    border: 1px solid var(--border-strong);
+    color: var(--muted);
   }
-  .pill.live         { color: #7ee787; border-color: #2ea04366; }
-  .pill.connecting   { color: #e3b341; border-color: #bb800966; }
-  .pill.reconnecting { color: #ff7b72; border-color: #f8514966; }
+  .pill.live         { color: var(--ok);   border-color: rgba(46,160,67,0.45); background: rgba(46,160,67,0.08); }
+  .pill.connecting   { color: var(--warn); border-color: rgba(187,128,9,0.45); background: rgba(187,128,9,0.08); }
+  .pill.reconnecting { color: var(--bad);  border-color: rgba(248,81,73,0.45); background: rgba(248,81,73,0.08); }
   .label {
     font-size: 11px;
-    letter-spacing: 0.14em;
+    letter-spacing: 0.16em;
     text-transform: uppercase;
-    color: #8b949e;
+    color: var(--muted);
   }
-  #rtt {
-    font-size: clamp(56px, 14vw, 120px);
-    line-height: 1;
-    font-variant-numeric: tabular-nums;
+  .block {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
   }
   #colo {
     font-size: 20px;
     letter-spacing: 0.2em;
-    color: #79c0ff;
+    color: var(--accent);
+  }
+  #rtt {
+    font-size: clamp(56px, 14vw, 104px);
+    line-height: 1;
+  }
+  /* Hero element: full column width, fluid height. The drawing code reads
+     this box on every resize, so CSS stays the single source of truth. */
+  .chart {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
   }
   #spark {
-    width: min(640px, 100%);
-    height: 96px;
-    border: 1px solid #21262d;
+    display: block;
+    width: 100%;
+    height: clamp(96px, 20vh, 144px);
+    border: 1px solid var(--border);
     border-radius: 8px;
-    background: #0d1117;
+    background: var(--surface);
   }
   .stats {
     display: flex;
-    gap: 32px;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 16px 44px;
   }
   .stat {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 2px;
+    gap: 4px;
   }
   .stat .value {
     font-size: 24px;
-    line-height: 1.2;
-    font-variant-numeric: tabular-nums;
+    line-height: 1.1;
   }
   .verdict {
-    font-size: clamp(22px, 5vw, 30px);
+    font-size: clamp(22px, 5vw, 28px);
     letter-spacing: 0.14em;
     text-transform: uppercase;
   }
-  .verdict.excellent { color: #7ee787; }
-  .verdict.good      { color: #e3b341; }
-  .verdict.rough     { color: #ff7b72; }
+  .verdict.excellent { color: var(--ok); }
+  .verdict.good      { color: var(--warn); }
+  .verdict.rough     { color: var(--bad); }
   .legend {
     font-size: 11px;
+    line-height: 1.7;
     letter-spacing: 0.04em;
-    color: #8b949e;
-    text-align: center;
+    color: var(--muted);
+    max-width: 46ch;
   }
 </style>
 </head>
 <body>
-  <span id="pill" class="pill connecting">connecting</span>
-  <div class="label">round trip</div>
-  <div id="rtt">&mdash;</div>
-  <div class="label">edge colo</div>
-  <div id="colo">&mdash;</div>
-  <canvas id="spark"></canvas>
-  <div class="label">last ~30s</div>
-  <div class="stats">
-    <div class="stat"><span class="label">p50</span><span id="p50" class="value">&mdash;</span></div>
-    <div class="stat"><span class="label">p95</span><span id="p95" class="value">&mdash;</span></div>
-    <div class="stat"><span class="label">jitter</span><span id="jitter" class="value">&mdash;</span></div>
-  </div>
-  <div id="verdict" class="verdict">&mdash;</div>
-  <div class="legend">excellent: p50 &lt; 40ms and jitter &lt; 10ms &middot; good: p50 &lt; 120ms and jitter &lt; 30ms &middot; otherwise rough</div>
+  <main>
+    <h1 class="title">latency lab</h1>
+    <span id="pill" class="pill connecting">connecting</span>
+    <section class="block">
+      <div class="label">edge colo</div>
+      <div id="colo">&mdash;</div>
+    </section>
+    <section class="block">
+      <div class="label">round trip</div>
+      <div id="rtt">&mdash;</div>
+    </section>
+    <section class="chart">
+      <canvas id="spark"></canvas>
+      <div class="label">last ~30s</div>
+    </section>
+    <section class="stats">
+      <div class="stat"><span class="label">p50</span><span id="p50" class="value">&mdash;</span></div>
+      <div class="stat"><span class="label">p95</span><span id="p95" class="value">&mdash;</span></div>
+      <div class="stat"><span class="label">jitter</span><span id="jitter" class="value">&mdash;</span></div>
+    </section>
+    <div id="verdict" class="verdict">&mdash;</div>
+    <div class="legend">excellent: p50 &lt; 40ms and jitter &lt; 10ms &middot; good: p50 &lt; 120ms and jitter &lt; 30ms &middot; otherwise rough</div>
+  </main>
 
 <script>
 (function () {
@@ -122,12 +180,16 @@ export const PAGE_HTML = `<!doctype html>
   var ctx = canvas.getContext('2d');
 
   // One sample every 100ms while visible -> 300 samples is about 30 seconds.
+  // Plot geometry comes from the canvas CSS box (see #spark): resizeCanvas()
+  // reads the rendered size on every resize/orientation change, so CSS stays
+  // the single source of truth and the drawing surface can never disagree
+  // with layout after a rotation.
   var WINDOW_SIZE = 300;
-  var PLOT_HEIGHT = 96;
 
   // The rolling Window of RTT values behind the sparkline and the readouts.
   var samples = [];
   var plotWidth = 0;
+  var plotHeight = 0;
 
   var wsUrl =
     (location.protocol === 'https:' ? 'wss://' : 'ws://') +
@@ -240,7 +302,7 @@ export const PAGE_HTML = `<!doctype html>
   }
 
   function draw() {
-    ctx.clearRect(0, 0, plotWidth, PLOT_HEIGHT);
+    ctx.clearRect(0, 0, plotWidth, plotHeight);
     var n = samples.length;
     if (n === 0) return; // empty state: leave the plot blank until data arrives
 
@@ -265,8 +327,8 @@ export const PAGE_HTML = `<!doctype html>
     }
     function yPos(value) {
       return (
-        PLOT_HEIGHT - bottomPad -
-        ((value - yMin) / (yMax - yMin)) * (PLOT_HEIGHT - topPad - bottomPad)
+        plotHeight - bottomPad -
+        ((value - yMin) / (yMax - yMin)) * (plotHeight - topPad - bottomPad)
       );
     }
 
@@ -295,10 +357,13 @@ export const PAGE_HTML = `<!doctype html>
   function resizeCanvas() {
     var dpr = window.devicePixelRatio || 1;
     var rect = canvas.getBoundingClientRect();
-    plotWidth = rect.width;
+    plotWidth = Math.max(1, rect.width);
+    plotHeight = Math.max(1, rect.height);
+    // Backing store tracks the CSS box at device resolution while drawing
+    // happens in CSS pixels via the transform below, so the sparkline never
+    // stretches when its fluid CSS size changes on rotation.
     canvas.width = Math.max(1, Math.round(rect.width * dpr));
-    canvas.height = Math.max(1, Math.round(PLOT_HEIGHT * dpr));
-    // Draw in CSS pixels while the backing store stays at device resolution.
+    canvas.height = Math.max(1, Math.round(rect.height * dpr));
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     draw();
   }
